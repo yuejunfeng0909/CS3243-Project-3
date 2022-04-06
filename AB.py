@@ -1,3 +1,4 @@
+from random import randrange
 import sys
 
 class Piece:
@@ -9,7 +10,7 @@ class Piece:
                 "Bishop": [(1, 1, 0), (1, -1, 0), (-1, -1, 0), (-1, 1, 0)],
                 "Queen": [(1, 0, 0), (0, -1, 0), (-1, 0, 0), (0, 1, 0), (1, 1, 0), (1, -1, 0), (-1, -1, 0), (-1, 1, 0)],
                 "Knight": [(2, 1, 1), (2, -1, 1), (1, 2, 1), (1, -2, 1), (-2, 1, 1), (-2, -1, 1), (-1, 2, 1), (-1, -2, 1)],
-                "Pawn": [(1, 0, 1)],
+                "Pawn": [],
                 "Empty": [],
                 }
 
@@ -28,19 +29,14 @@ class Board:
         self.piecesPos = [whitePieces, blackPieces]
         self.board_size_x = cols
         self.board_size_y = rows
-
-    def addPiece(self, x:int, y:int, pieceType: str, agent: str) -> None:
-        self.piecesPos[0 if agent == "White" else 1][(x, y)] = pieceType
     
-    def movePiece(self, agent:str, x:int, y:int, target_x:int, target_y:int) -> None:
-        agentIndex = 0 if agent == "White" else 1
-        enemyAgentIndex = 1-agentIndex
-        pieceType = self.piecesPos[agentIndex].pop((x, y))
-        self.piecesPos[agentIndex][(target_x, target_y)]= pieceType
-        self.lastMovement = ((x, y), (target_x, target_y))
+    def movePiece(self, agent:int, x:int, y:int, target_x:int, target_y:int) -> None:
+        pieceType = self.piecesPos[agent].pop((x, y))
+        self.piecesPos[agent][(target_x, target_y)]= pieceType
+        self.lastMove = ((x, y), (target_x, target_y))
 
         # remove eaten piece.
-        self.piecesPos[enemyAgentIndex].pop((target_x, target_y), None)
+        self.piecesPos[1-agent].pop((target_x, target_y), None)
 
     def isWithinBoard(self, x, y) -> bool:
         if (0 > x or x >= self.board_size_x) or (0 > y or y >= self.board_size_y):
@@ -118,39 +114,61 @@ class pieceMovementModel():
                 break
         return steps 
 
+    def __pawnVerticalMovesToDirection(self, y_change: int): 
+        new_pos = self.moveToDirection(0, y_change)
+        if (not self.board.isWithinBoard(new_pos[0], new_pos[1])) or \
+                self.board.isBlockedByOwn(new_pos[0], new_pos[1], self.agent) or \
+                self.board.isBlockedByOpponent(new_pos[0], new_pos[1], self.agent): 
+            return []
+        return [new_pos]
+
+    def __pawnDiagnalMovesToDirection(self, x_change: int, y_change: int): 
+        new_pos = self.moveToDirection(x_change, y_change)
+        if (not self.board.isWithinBoard(new_pos[0], new_pos[1])) or self.board.isBlockedByOwn(new_pos[0], new_pos[1], self.agent): 
+            return []
+        if self.board.isBlockedByOpponent(new_pos[0], new_pos[1], self.agent):
+            return [new_pos]
+        return []
+
     def getAllPossibleNewPos(self): 
-        if self.pieceType == "Pawn":
-            if self.agent == 0:
-                self.movements = [(1, 0, 1)]
-            else:
-                self.movements = [(-1, 0, 1)]
-        
         steps = []
         for movement in self.movements: 
             xChange, yChange, maxSteps = movement 
             steps.extend(self.__getAllPossibleMovesToDirection(xChange, yChange, maxSteps)) 
+        
+
+        if self.pieceType == "Pawn":
+            if self.agent == 0:
+                steps.extend(self.__pawnVerticalMovesToDirection(1))
+                steps.extend(self.__pawnDiagnalMovesToDirection(1, 1))
+                steps.extend(self.__pawnDiagnalMovesToDirection(-1, 1))
+            else:
+                steps.extend(self.__pawnVerticalMovesToDirection(-1))
+                steps.extend(self.__pawnDiagnalMovesToDirection(1, -1))
+                steps.extend(self.__pawnDiagnalMovesToDirection(-1, -1))
+        
         return steps
 
 class State:
 
-    def __init__(self, rows: int, cols:int, whitePieces:dict, blackPieces:dict, currentAgent:str) -> None:
+    def __init__(self, rows: int, cols:int, whitePieces:dict, blackPieces:dict, currentAgent:int) -> None:
         self.board = Board(cols, rows, blackPieces, whitePieces)
         self.rows = rows
         self.cols = cols
         self.currentAgent = currentAgent
+        # print("current agent:", currentAgent)
+        # print(whitePieces)
+        # print(blackPieces)
 
     def possibleNewStates(self):
         # for all pieces of the current agent, list down all the possible movements that can be made by each pieces
 
-        agentIndex = 0 if self.currentAgent == "White" else 1
-
-        # Then add all the possible movements from the current 
         possibleNewStates = []
-        agentOfNewState = "Black" if self.currentAgent=="White" else "White"
-        for piecePos in self.board.piecesPos[agentIndex]:
-            movementModel = pieceMovementModel(self.board, piecePos[0], piecePos[1], self.board.piecesPos[agentIndex][piecePos], agentIndex)
+        agentOfNewState = 1-self.currentAgent
+        for piecePos in self.board.piecesPos[self.currentAgent]:
+            movementModel = pieceMovementModel(self.board, piecePos[0], piecePos[1], self.board.piecesPos[self.currentAgent][piecePos], self.currentAgent)
             for newPos in movementModel.getAllPossibleNewPos():
-                newState = State(self.rows, self.cols, self.board.piecesPos[0], self.board.piecesPos[1], agentOfNewState)
+                newState = State(self.rows, self.cols, self.board.piecesPos[0].copy(), self.board.piecesPos[1].copy(), agentOfNewState)
                 newState.board.movePiece(self.currentAgent, piecePos[0], piecePos[1], newPos[0], newPos[1])
                 possibleNewStates.append(newState)
 
@@ -164,23 +182,50 @@ def letterToX(character) -> int:
     return ord(character) - ord('a')
 
 def PosToXY(pos) -> tuple:
-    return (letterToX(pos[0]), int(pos[1:]))
+    return (letterToX(pos[0]), int(pos[1]))
 
 def XYtoPos(xy: tuple) -> tuple:
     xCharVal: int = xy[0]+ord('a')
     return (chr(xCharVal), xy[1])
 
-def ab(depth: int, state: State, alpha: int, beta: int):
+def ab(depth: int, state: State, alpha: float, beta: float):
 
     if depth == 0 or state.isTerminalState():
         # return utility
         # utility = number of white - black
-        return len(state.board.piecesPos[0]) - len(state.board.piecesPos[1])
+        whitePiecesCount = [0,]*len(Piece.pieceTypes)
+        blackPiecesCount = [0,]*len(Piece.pieceTypes)
 
-    if state.currentAgent == "White":
+        for whitePiece in state.board.piecesPos[0]:
+            indexOfPieceType = Piece.pieceTypes.index(state.board.piecesPos[0][whitePiece])
+            whitePiecesCount[indexOfPieceType] += 1
+        for blackPiece in state.board.piecesPos[1]:
+            indexOfPieceType = Piece.pieceTypes.index(state.board.piecesPos[1][blackPiece])
+            blackPiecesCount[indexOfPieceType] += 1
+
+        # pieceTypes = ["King", "Queen", "Bishop", "Rook", "Knight", "Pawn"]
+        pieceWeights = [100, 9, 3, 5, 3, 1]
+        # materialScore = kingWt  * (wK-bK)
+        #       + queenWt * (wQ-bQ)
+        #       + rookWt  * (wR-bR)
+        #       + knightWt* (wN-bN)
+        #       + bishopWt* (wB-bB)
+        #       + pawnWt  * (wP-bP)
+        materialScore = sum([pieceWeights[i] * (whitePiecesCount[i] - blackPiecesCount[i]) for i in range(len(Piece.pieceTypes))])
+
+        # mobilityScore = mobilityWt * (wMobility-bMobility)
+        state.currentAgent = 0
+        wMobility = len(state.possibleNewStates())
+        state.currentAgent = 0
+        bMobility = len(state.possibleNewStates())
+        mobilityScore = 0.1 * (wMobility-bMobility)
+
+        return (materialScore + mobilityScore) * (1 if state.currentAgent==0 else -1)
+
+    if state.currentAgent == 0:
         value = float("-inf")
         for newState in state.possibleNewStates():
-            value = max(value, ab(depth - 1, "Black", newState, alpha, beta))
+            value = max(value, ab(depth - 1, newState, alpha, beta))
             if value >= beta:
                 break
             alpha = max(alpha, value)
@@ -188,7 +233,7 @@ def ab(depth: int, state: State, alpha: int, beta: int):
     else:
         value = float("inf")
         for newState in state.possibleNewStates():
-            value = min(value, ab(depth - 1, "White", newState, alpha, beta))
+            value = min(value, ab(depth - 1, newState, alpha, beta))
             if value <= beta:
                 break
             alpha = min(alpha, value)
@@ -247,25 +292,109 @@ def parser(testfile):
 def studentAgent(gameboard):
     whitePieces, blackPieces = {}, {}
     for piecePos in gameboard:
+        convertedPos = PosToXY(piecePos)
         if gameboard[piecePos][1] == "White":
-            whitePieces[piecePos] = gameboard[piecePos][0]
+            whitePieces[convertedPos] = gameboard[piecePos][0]
         else:
-            blackPieces[piecePos] = gameboard[piecePos][0]
-    state = State(5, 5, whitePieces, blackPieces, "White")
+            blackPieces[convertedPos] = gameboard[piecePos][0]
+    state = State(5, 5, whitePieces, blackPieces, 0)
     move = (None, None)
     maxValue = float("-inf")
     for possibleState in state.possibleNewStates():
-        newAlpha = ab(10, possibleState, float("-inf"), float("inf"))
+        newAlpha = ab(2, possibleState, float("-inf"), float("inf"))
         if newAlpha > maxValue:
             maxValue = newAlpha
-            move = possibleState
+            move = possibleState.board.lastMove
+    # print("Max value:", maxValue)
+    move = (XYtoPos(move[0]), XYtoPos(move[1]))
     return move #Format to be returned (('a', 0), ('b', 3))
 
+def dummyAgent(gameboard):
+    whitePieces, blackPieces = {}, {}
+    for piecePos in gameboard:
+        convertedPos = PosToXY(piecePos)
+        if gameboard[piecePos][1] == "White":
+            whitePieces[convertedPos] = gameboard[piecePos][0]
+        else:
+            blackPieces[convertedPos] = gameboard[piecePos][0]
+    state = State(5, 5, whitePieces, blackPieces, 1)
+    possibleState = state.possibleNewStates()[0]
 
-rows, cols, whitePieces, blackPieces = parser(sys.argv[1])
-combinedGameboard = {}
-for whitePiecePos in whitePieces:
-    combinedGameboard[whitePiecePos] = (whitePieces[whitePiecePos], "White")
-for blackPiecePos in blackPieces:
-    combinedGameboard[blackPiecePos] = (blackPieces[blackPiecePos], "Black")
-print(studentAgent(combinedGameboard))
+    move = possibleState.board.lastMove
+    move = (XYtoPos(move[0]), XYtoPos(move[1]))
+    
+    return move #Format to be returned (('a', 0), ('b', 3))
+
+def randomAgent(gameboard):
+    whitePieces, blackPieces = {}, {}
+    for piecePos in gameboard:
+        convertedPos = PosToXY(piecePos)
+        if gameboard[piecePos][1] == "White":
+            whitePieces[convertedPos] = gameboard[piecePos][0]
+        else:
+            blackPieces[convertedPos] = gameboard[piecePos][0]
+    state = State(5, 5, whitePieces, blackPieces, 1)
+    
+    possibleStates = state.possibleNewStates()
+    selectedState = possibleStates[randrange(0, len(possibleStates))]
+    
+
+    move = selectedState.board.lastMove
+    move = (XYtoPos(move[0]), XYtoPos(move[1]))
+    
+    return move #Format to be returned (('a', 0), ('b', 3))
+
+def minimaxAgent(gameboard):
+    whitePieces, blackPieces = {}, {}
+    for piecePos in gameboard:
+        convertedPos = PosToXY(piecePos)
+        if gameboard[piecePos][1] == "White":
+            whitePieces[convertedPos] = gameboard[piecePos][0]
+        else:
+            blackPieces[convertedPos] = gameboard[piecePos][0]
+    state = State(5, 5, whitePieces, blackPieces, 1)
+    move = (None, None)
+    minValue = float("inf")
+    for possibleState in state.possibleNewStates():
+        newBeta = ab(4, possibleState, float("-inf"), float("inf"))
+        if newBeta < minValue:
+            minValue = newBeta
+            move = possibleState.board.lastMove
+    move = (XYtoPos(move[0]), XYtoPos(move[1]))
+    return move #Format to be returned (('a', 0), ('b', 3))
+
+# rows, cols, whitePieces, blackPieces = parser(sys.argv[1])
+# combinedGameboard = {}
+# for whitePiecePos in whitePieces:
+#     combinedGameboard[XYtoPos(whitePiecePos)] = (whitePieces[whitePiecePos], "White")
+# for blackPiecePos in blackPieces:
+#     combinedGameboard[XYtoPos(blackPiecePos)] = (blackPieces[blackPiecePos], "Black")
+# initialState = State(rows, cols, whitePieces, blackPieces, 0)
+
+# def game(depth:int, studentAgentTurn:bool, gameboard: dict, gameState: State):
+#     if depth == 0:
+#         print("Draw")
+#         return
+
+#     if studentAgentTurn:
+#         move = studentAgent(gameboard)
+#     else:
+#         move = minimaxAgent(gameboard)
+    
+#     print("current depth:", depth)
+#     print("White pieces:", gameState.board.piecesPos[0])
+#     print("Black pieces:", gameState.board.piecesPos[1])
+#     print("Student" if studentAgentTurn else "Enemy", "selected move is:", move, "for", gameboard[move[0]][0])
+#     print("")
+
+#     gameState.board.movePiece(0 if studentAgentTurn else 1, letterToX(move[0][0]), move[0][1], letterToX(move[1][0]), move[1][1])
+
+#     gameboard[move[1]] = gameboard[move[0]]
+#     gameboard.pop(move[0])
+
+#     if gameState.isTerminalState():
+#         print("Student agent won" if studentAgentTurn else "Enemy agent won")
+#     else:
+#         game(depth-1, not studentAgentTurn, gameboard, gameState)
+
+# game(50, True, combinedGameboard, initialState)
