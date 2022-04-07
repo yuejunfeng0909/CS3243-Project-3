@@ -73,32 +73,6 @@ class pieceMovementModel():
         new_y = self.y + y_change
         return (new_x, new_y)
 
-    # def __getAllPossibleThreatenToDirection(self, x_change: int, y_change: int, max_steps=0): 
-    #     '''Get all the positions that the piece can move to, including position that are being threatened by other pieces''' 
-    #     if max_steps == 0: 
-    #         max_steps = max(self.board.board_size_x, self.board.board_size_y) 
-          
-    #     steps = [] 
-    #     for i in range(max_steps): 
-    #         new_pos = self.moveToDirection((i+1) * x_change, (i+1) * y_change) 
-    #         if (not self.board.isWithinBoard(new_pos[0], new_pos[1])) or self.board.isBlocked(new_pos[0], new_pos[1]): 
-    #             break 
-    #         steps.append(new_pos) 
-    #     return steps 
-    
-    # def getAllPossibleThreaten(self): 
-    #     if self.pieceType == "Pawn":
-    #         if self.agent == 0:
-    #             self.movements = [(1, 0, 1), (1, 1, 1), (1, -1, 1)]
-    #         else:
-    #             self.movements = [(-1, 0, 1), (-1, 1, 1), (-1, -1, 1)]
-        
-    #     steps = []
-    #     for movement in self.movements: 
-    #         xChange, yChange, maxSteps = movement 
-    #         steps.extend(self.__getAllPossibleThreatenToDirection(xChange, yChange, maxSteps)) 
-    #     return steps
-
     def __getAllPossibleMovesToDirection(self, x_change: int, y_change: int, max_steps=0): 
         '''Get all the positions that the piece can move to, including position that are being threatened by other pieces''' 
         if max_steps == 0: 
@@ -162,7 +136,6 @@ class State:
 
         possibleMoves = []
         agentOfNewState = 1-self.currentAgent
-        # pioritize the pieces that are closer to the King piece
         # get king piece position
         opponentPos = self.board.piecesPos[agentOfNewState]
         foundKing = False
@@ -174,6 +147,7 @@ class State:
         if not foundKing:
             return []
 
+        # pioritize the pieces that are closer to the King piece
         ownPiecePosOrderedByDistance = sorted(self.board.piecesPos[self.currentAgent].keys(), key=lambda x: abs(x[0]-kingPos[0])+abs(x[1]-kingPos[1]))
 
         for piecePos in ownPiecePosOrderedByDistance:
@@ -233,87 +207,68 @@ def ab(depth: int, state: State, alpha: float, beta: float):
         bMobility = len(state.possibleMoves())
         mobilityScore = 5 * (wMobility-bMobility)
 
-        return (materialScore + mobilityScore) * (1 if state.currentAgent==0 else -1)
-        # return materialScore * (1 if state.currentAgent==0 else -1)
-
-    # int alphaBetaMax( int alpha, int beta, int depthleft ) {
-    # if ( depthleft == 0 ) return evaluate();
-    # for ( all moves) {
-    #     score = alphaBetaMin( alpha, beta, depthleft - 1 );
-    #     if( score >= beta )
-    #         return beta;   // fail hard beta-cutoff
-    #     if( score > alpha )
-    #         alpha = score; // alpha acts like max in MiniMax
-    # }
-    # return alpha;
-    # }
-
-    # int alphaBetaMin( int alpha, int beta, int depthleft ) {
-    # if ( depthleft == 0 ) return -evaluate();
-    # for ( all moves) {
-    #     score = alphaBetaMax( alpha, beta, depthleft - 1 );
-    #     if( score <= alpha )
-    #         return alpha; // fail hard alpha-cutoff
-    #     if( score < beta )
-    #         beta = score; // beta acts like min in MiniMax
-    # }
-    # return beta;
-    # }   
+        return ((materialScore + mobilityScore) * (1 if state.currentAgent==0 else -1), state)
 
     if state.currentAgent == 0:
         value = float("-inf")
         possibleMoves = state.possibleMoves()
         for newMove in possibleMoves:
             newState = state.possibleMovesToStates([newMove])[0]
-            value = max(value, ab(depth - 1, newState, alpha, beta))
+            abValue, _ = ab(depth - 1, newState, alpha, beta)
+            if abValue > value:
+                value = abValue
+                bestState = newState
             if value >= beta:
                 break
             alpha = max(alpha, value)
-        return value
+        return (value, bestState)
     else:
         value = float("inf")
         possibleMoves = state.possibleMoves()
         for newMove in possibleMoves:
             newState = state.possibleMovesToStates([newMove])[0]
-            value = min(value, ab(depth - 1, newState, alpha, beta))
+            abValue, _ = ab(depth - 1, newState, alpha, beta)
+            if abValue < value:
+                value = abValue
+                bestState = newState
             if value <= alpha:
                 break
             alpha = min(alpha, value)
-        return value
+        return (value, bestState)
 
-def parser(testfile):
-    f = open(testfile, "r")
+# def parser(testfile):
+#     f = open(testfile, "r")
 
-    def input():
-        line = f.readline().strip("\n")
-        return line
+#     def input():
+#         line = f.readline().strip("\n")
+#         return line
 
-    rows = int(input().split(":")[1])
-    cols = int(input().split(":")[1])
+#     rows = int(input().split(":")[1])
+#     cols = int(input().split(":")[1])
 
-    blackPieces={}
-    # Number of black pieces
-    numOfEachBlackPiece = input().split(":")[1].split(" ")
-    numOfEachBlackPiece = [int(x) for x in numOfEachBlackPiece]
-    input() # ignore line "Position of Enemy Pieces:"
-    for _ in range(sum(numOfEachBlackPiece)):
-        rawInput = input()[1:-1].split(",")
-        piecePosition = PosToXY(rawInput[1])
-        blackPieces[piecePosition] = rawInput[0]
+#     blackPieces={}
+#     # Number of black pieces
+#     numOfEachBlackPiece = input().split(":")[1].split(" ")
+#     numOfEachBlackPiece = [int(x) for x in numOfEachBlackPiece]
+#     input() # ignore line "Position of Enemy Pieces:"
+#     for _ in range(sum(numOfEachBlackPiece)):
+#         rawInput = input()[1:-1].split(",")
+#         piecePosition = PosToXY(rawInput[1])
+#         blackPieces[piecePosition] = rawInput[0]
 
-    whitePieces = {}
-    # Number of white pieces
-    numOfEachWhitePiece = input().split(":")[1].split(" ")
-    numOfEachWhitePiece = [int(x) for x in numOfEachWhitePiece]
-    input() # ignore line "Position of Own Pieces:"
-    for _ in range(sum(numOfEachWhitePiece)):
-        rawInput = input()[1:-1].split(",")
-        piecePosition = PosToXY(rawInput[1])
-        whitePieces[piecePosition] = rawInput[0]
+#     whitePieces = {}
+#     # Number of white pieces
+#     numOfEachWhitePiece = input().split(":")[1].split(" ")
+#     numOfEachWhitePiece = [int(x) for x in numOfEachWhitePiece]
+#     input() # ignore line "Position of Own Pieces:"
+#     for _ in range(sum(numOfEachWhitePiece)):
+#         rawInput = input()[1:-1].split(",")
+#         piecePosition = PosToXY(rawInput[1])
+#         whitePieces[piecePosition] = rawInput[0]
 
-    f.close()
+#     f.close()
 
-    return rows, cols, whitePieces, blackPieces
+#     return rows, cols, whitePieces, blackPieces
 
 
 ### DO NOT EDIT/REMOVE THE FUNCTION HEADER BELOW###
@@ -340,16 +295,7 @@ def studentAgent(gameboard):
         else:
             blackPieces[convertedPos] = gameboard[piecePos][0]
     state = State(5, 5, whitePieces, blackPieces, 0)
-    move = (None, None)
-    maxValue = float("-inf")
-    possibleMoves = state.possibleMoves()
-    for newMove in possibleMoves:
-        newState = state.possibleMovesToStates([newMove])[0]
-        newAlpha = ab(1, newState, float("-inf"), float("inf"))
-        if newAlpha > maxValue:
-            maxValue = newAlpha
-            move = newState.board.lastMove
-    # print("Max value:", maxValue)
+    move = ab(2, state, float("-inf"), float("inf"))[1].board.lastMove
     move = (XYtoPos(move[0]), XYtoPos(move[1]))
     return move #Format to be returned (('a', 0), ('b', 3))
 
@@ -399,15 +345,7 @@ def studentAgent(gameboard):
 #         else:
 #             blackPieces[convertedPos] = gameboard[piecePos][0]
 #     state = State(5, 5, whitePieces, blackPieces, 1)
-#     move = (None, None)
-#     minValue = float("inf")
-#     possibleMoves = state.possibleMoves()
-#     for newMove in possibleMoves:
-#         newState = state.possibleMovesToStates([newMove])[0]
-#         newBeta = ab(3, newState, float("-inf"), float("inf"))
-#         if newBeta < minValue:
-#             minValue = newBeta
-#             move = newState.board.lastMove
+#     move = ab(4, state, float("-inf"), float("inf"))[1].board.lastMove
 #     move = (XYtoPos(move[0]), XYtoPos(move[1]))
 #     return move #Format to be returned (('a', 0), ('b', 3))
 
@@ -445,4 +383,4 @@ def studentAgent(gameboard):
 #     else:
 #         game(depth-1, not studentAgentTurn, gameboard, gameState)
 
-# game(50, True, combinedGameboard, initialState)
+# game(100, True, combinedGameboard, initialState)
