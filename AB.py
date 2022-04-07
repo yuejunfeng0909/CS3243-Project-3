@@ -156,23 +156,44 @@ class State:
         self.rows = rows
         self.cols = cols
         self.currentAgent = currentAgent
-        # print("current agent:", currentAgent)
-        # print(whitePieces)
-        # print(blackPieces)
 
-    def possibleNewStates(self):
+    def possibleMoves(self):
         # for all pieces of the current agent, list down all the possible movements that can be made by each pieces
 
+        possibleMoves = []
+        agentOfNewState = 1-self.currentAgent
+        # pioritize the pieces that are closer to the King piece
+        # get king piece position
+        opponentPos = self.board.piecesPos[agentOfNewState]
+        foundKing = False
+        for pos in opponentPos:
+            if opponentPos[pos] == "King":
+                kingPos = pos
+                foundKing = True
+                break
+        if not foundKing:
+            return []
+
+        ownPiecePosOrderedByDistance = sorted(self.board.piecesPos[self.currentAgent].keys(), key=lambda x: abs(x[0]-kingPos[0])+abs(x[1]-kingPos[1]))
+
+        for piecePos in ownPiecePosOrderedByDistance:
+            movementModel = pieceMovementModel(self.board, piecePos[0], piecePos[1], self.board.piecesPos[self.currentAgent][piecePos], self.currentAgent)
+            
+            for newPos in movementModel.getAllPossibleNewPos():
+                possibleMoves.append((piecePos, newPos))
+
+        return possibleMoves
+    
+    def possibleMovesToStates(self, moves):
+        # for all possible moves, list down all the possible new states
         possibleNewStates = []
         agentOfNewState = 1-self.currentAgent
-        for piecePos in self.board.piecesPos[self.currentAgent]:
-            movementModel = pieceMovementModel(self.board, piecePos[0], piecePos[1], self.board.piecesPos[self.currentAgent][piecePos], self.currentAgent)
-            for newPos in movementModel.getAllPossibleNewPos():
-                newState = State(self.rows, self.cols, self.board.piecesPos[0].copy(), self.board.piecesPos[1].copy(), agentOfNewState)
-                newState.board.movePiece(self.currentAgent, piecePos[0], piecePos[1], newPos[0], newPos[1])
-                possibleNewStates.append(newState)
-
+        for move in moves:
+            newState = State(self.rows, self.cols, self.board.piecesPos[0].copy(), self.board.piecesPos[1].copy(), agentOfNewState)
+            newState.board.movePiece(self.currentAgent, move[0][0], move[0][1], move[1][0], move[1][1])
+            possibleNewStates.append(newState)
         return possibleNewStates
+
 
     def isTerminalState(self) -> bool:
         return "King" not in self.board.piecesPos[0].values() or "King" not in self.board.piecesPos[1].values()
@@ -192,7 +213,6 @@ def ab(depth: int, state: State, alpha: float, beta: float):
 
     if depth == 0 or state.isTerminalState():
         # return utility
-        # utility = number of white - black
         whitePiecesCount = [0,]*len(Piece.pieceTypes)
         blackPiecesCount = [0,]*len(Piece.pieceTypes)
 
@@ -204,27 +224,47 @@ def ab(depth: int, state: State, alpha: float, beta: float):
             blackPiecesCount[indexOfPieceType] += 1
 
         # pieceTypes = ["King", "Queen", "Bishop", "Rook", "Knight", "Pawn"]
-        pieceWeights = [100, 9, 3, 5, 3, 1]
-        # materialScore = kingWt  * (wK-bK)
-        #       + queenWt * (wQ-bQ)
-        #       + rookWt  * (wR-bR)
-        #       + knightWt* (wN-bN)
-        #       + bishopWt* (wB-bB)
-        #       + pawnWt  * (wP-bP)
+        pieceWeights = [1000, 5, 4, 4, 3, 2]
         materialScore = sum([pieceWeights[i] * (whitePiecesCount[i] - blackPiecesCount[i]) for i in range(len(Piece.pieceTypes))])
 
-        # mobilityScore = mobilityWt * (wMobility-bMobility)
         state.currentAgent = 0
-        wMobility = len(state.possibleNewStates())
+        wMobility = len(state.possibleMoves())
         state.currentAgent = 0
-        bMobility = len(state.possibleNewStates())
-        mobilityScore = 0.1 * (wMobility-bMobility)
+        bMobility = len(state.possibleMoves())
+        mobilityScore = 5 * (wMobility-bMobility)
 
         return (materialScore + mobilityScore) * (1 if state.currentAgent==0 else -1)
+        # return materialScore * (1 if state.currentAgent==0 else -1)
+
+    # int alphaBetaMax( int alpha, int beta, int depthleft ) {
+    # if ( depthleft == 0 ) return evaluate();
+    # for ( all moves) {
+    #     score = alphaBetaMin( alpha, beta, depthleft - 1 );
+    #     if( score >= beta )
+    #         return beta;   // fail hard beta-cutoff
+    #     if( score > alpha )
+    #         alpha = score; // alpha acts like max in MiniMax
+    # }
+    # return alpha;
+    # }
+
+    # int alphaBetaMin( int alpha, int beta, int depthleft ) {
+    # if ( depthleft == 0 ) return -evaluate();
+    # for ( all moves) {
+    #     score = alphaBetaMax( alpha, beta, depthleft - 1 );
+    #     if( score <= alpha )
+    #         return alpha; // fail hard alpha-cutoff
+    #     if( score < beta )
+    #         beta = score; // beta acts like min in MiniMax
+    # }
+    # return beta;
+    # }   
 
     if state.currentAgent == 0:
         value = float("-inf")
-        for newState in state.possibleNewStates():
+        possibleMoves = state.possibleMoves()
+        for newMove in possibleMoves:
+            newState = state.possibleMovesToStates([newMove])[0]
             value = max(value, ab(depth - 1, newState, alpha, beta))
             if value >= beta:
                 break
@@ -232,9 +272,11 @@ def ab(depth: int, state: State, alpha: float, beta: float):
         return value
     else:
         value = float("inf")
-        for newState in state.possibleNewStates():
+        possibleMoves = state.possibleMoves()
+        for newMove in possibleMoves:
+            newState = state.possibleMovesToStates([newMove])[0]
             value = min(value, ab(depth - 1, newState, alpha, beta))
-            if value <= beta:
+            if value <= alpha:
                 break
             alpha = min(alpha, value)
         return value
@@ -300,68 +342,74 @@ def studentAgent(gameboard):
     state = State(5, 5, whitePieces, blackPieces, 0)
     move = (None, None)
     maxValue = float("-inf")
-    for possibleState in state.possibleNewStates():
-        newAlpha = ab(2, possibleState, float("-inf"), float("inf"))
+    possibleMoves = state.possibleMoves()
+    for newMove in possibleMoves:
+        newState = state.possibleMovesToStates([newMove])[0]
+        newAlpha = ab(1, newState, float("-inf"), float("inf"))
         if newAlpha > maxValue:
             maxValue = newAlpha
-            move = possibleState.board.lastMove
+            move = newState.board.lastMove
     # print("Max value:", maxValue)
     move = (XYtoPos(move[0]), XYtoPos(move[1]))
     return move #Format to be returned (('a', 0), ('b', 3))
 
-def dummyAgent(gameboard):
-    whitePieces, blackPieces = {}, {}
-    for piecePos in gameboard:
-        convertedPos = PosToXY(piecePos)
-        if gameboard[piecePos][1] == "White":
-            whitePieces[convertedPos] = gameboard[piecePos][0]
-        else:
-            blackPieces[convertedPos] = gameboard[piecePos][0]
-    state = State(5, 5, whitePieces, blackPieces, 1)
-    possibleState = state.possibleNewStates()[0]
+# def dummyAgent(gameboard):
+#     whitePieces, blackPieces = {}, {}
+#     for piecePos in gameboard:
+#         convertedPos = PosToXY(piecePos)
+#         if gameboard[piecePos][1] == "White":
+#             whitePieces[convertedPos] = gameboard[piecePos][0]
+#         else:
+#             blackPieces[convertedPos] = gameboard[piecePos][0]
+#     state = State(5, 5, whitePieces, blackPieces, 1)
+#     possibleMove = state.possibleMoves()[0]
+#     possibleState = state.possibleMovesToStates([possibleMove])[0]
 
-    move = possibleState.board.lastMove
-    move = (XYtoPos(move[0]), XYtoPos(move[1]))
+#     move = possibleState.board.lastMove
+#     move = (XYtoPos(move[0]), XYtoPos(move[1]))
     
-    return move #Format to be returned (('a', 0), ('b', 3))
+#     return move #Format to be returned (('a', 0), ('b', 3))
 
-def randomAgent(gameboard):
-    whitePieces, blackPieces = {}, {}
-    for piecePos in gameboard:
-        convertedPos = PosToXY(piecePos)
-        if gameboard[piecePos][1] == "White":
-            whitePieces[convertedPos] = gameboard[piecePos][0]
-        else:
-            blackPieces[convertedPos] = gameboard[piecePos][0]
-    state = State(5, 5, whitePieces, blackPieces, 1)
+# def randomAgent(gameboard):
+#     whitePieces, blackPieces = {}, {}
+#     for piecePos in gameboard:
+#         convertedPos = PosToXY(piecePos)
+#         if gameboard[piecePos][1] == "White":
+#             whitePieces[convertedPos] = gameboard[piecePos][0]
+#         else:
+#             blackPieces[convertedPos] = gameboard[piecePos][0]
+#     state = State(5, 5, whitePieces, blackPieces, 1)
     
-    possibleStates = state.possibleNewStates()
-    selectedState = possibleStates[randrange(0, len(possibleStates))]
+#     possibleMoves = state.possibleMoves()
+#     selectedMove = possibleMoves[randrange(0, len(possibleMoves))]
+#     selectedState = state.possibleMovesToStates([selectedMove])[0]
     
 
-    move = selectedState.board.lastMove
-    move = (XYtoPos(move[0]), XYtoPos(move[1]))
+#     move = selectedState.board.lastMove
+#     move = (XYtoPos(move[0]), XYtoPos(move[1]))
     
-    return move #Format to be returned (('a', 0), ('b', 3))
+#     return move #Format to be returned (('a', 0), ('b', 3))
 
-def minimaxAgent(gameboard):
-    whitePieces, blackPieces = {}, {}
-    for piecePos in gameboard:
-        convertedPos = PosToXY(piecePos)
-        if gameboard[piecePos][1] == "White":
-            whitePieces[convertedPos] = gameboard[piecePos][0]
-        else:
-            blackPieces[convertedPos] = gameboard[piecePos][0]
-    state = State(5, 5, whitePieces, blackPieces, 1)
-    move = (None, None)
-    minValue = float("inf")
-    for possibleState in state.possibleNewStates():
-        newBeta = ab(4, possibleState, float("-inf"), float("inf"))
-        if newBeta < minValue:
-            minValue = newBeta
-            move = possibleState.board.lastMove
-    move = (XYtoPos(move[0]), XYtoPos(move[1]))
-    return move #Format to be returned (('a', 0), ('b', 3))
+# def minimaxAgent(gameboard):
+#     whitePieces, blackPieces = {}, {}
+#     for piecePos in gameboard:
+#         convertedPos = PosToXY(piecePos)
+#         if gameboard[piecePos][1] == "White":
+#             whitePieces[convertedPos] = gameboard[piecePos][0]
+#         else:
+#             blackPieces[convertedPos] = gameboard[piecePos][0]
+#     state = State(5, 5, whitePieces, blackPieces, 1)
+#     move = (None, None)
+#     minValue = float("inf")
+#     possibleMoves = state.possibleMoves()
+#     for newMove in possibleMoves:
+#         newState = state.possibleMovesToStates([newMove])[0]
+#         newBeta = ab(3, newState, float("-inf"), float("inf"))
+#         if newBeta < minValue:
+#             minValue = newBeta
+#             move = newState.board.lastMove
+#     move = (XYtoPos(move[0]), XYtoPos(move[1]))
+#     return move #Format to be returned (('a', 0), ('b', 3))
 
 # rows, cols, whitePieces, blackPieces = parser(sys.argv[1])
 # combinedGameboard = {}
